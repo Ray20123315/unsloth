@@ -8,6 +8,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import base64
+import hashlib
 import io
 import json
 import queue
@@ -1653,6 +1654,10 @@ def test_an_rvc_run_converts_an_upload_to_a_builtin_voice(stub, tmp_path):
 def test_an_rvc_run_uses_a_registered_model_id_and_keeps_paths_private(
     stub, tmp_path, monkeypatch
 ):
+    monkeypatch.setenv(
+        "UNSLOTH_STUDIO_TRUSTED_RVC_CHECKPOINT_SHA256",
+        hashlib.sha256(b"checkpoint").hexdigest(),
+    )
     backend = _use(stub, "rvc", "RVC-GGUF")
     input_id = _input(ALICE, seconds = 2.0)
     prepared_limits = []

@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 
 import pytest
 
@@ -18,6 +19,14 @@ async def _chunks(*parts: bytes):
 @pytest.fixture
 def account_audio(tmp_path, monkeypatch):
     active = ["alice"]
+    monkeypatch.setenv(
+        "UNSLOTH_STUDIO_TRUSTED_RVC_CHECKPOINT_SHA256",
+        hashlib.sha256(b"weights").hexdigest(),
+    )
+    monkeypatch.setenv(
+        "UNSLOTH_STUDIO_TRUSTED_RVC_INDEX_SHA256",
+        hashlib.sha256(b"faiss").hexdigest(),
+    )
     monkeypatch.setattr(
         audio_gallery,
         "gallery_dir",
@@ -88,3 +97,47 @@ def test_invalid_display_name_does_not_leave_an_orphan_checkpoint(account_audio)
         _register("voice.pth", b"weights", name = "x" * 129)
     directory = audio_rvc_models.models_dir()
     assert list(directory.glob("*.pth")) == []
+
+
+def test_checkpoint_requires_server_trust_and_rejects_unapproved_hash(
+    account_audio, monkeypatch
+):
+    monkeypatch.delenv("UNSLOTH_STUDIO_TRUSTED_RVC_CHECKPOINT_SHA256")
+    with pytest.raises(audio_rvc_models.RVCModelError) as disabled:
+        _register("voice.pth", b"weights")
+    assert disabled.value.status == 503
+
+    monkeypatch.setenv(
+        "UNSLOTH_STUDIO_TRUSTED_RVC_CHECKPOINT_SHA256",
+        hashlib.sha256(b"another checkpoint").hexdigest(),
+    )
+    with pytest.raises(audio_rvc_models.RVCModelError) as untrusted:
+        _register("voice.pth", b"weights")
+    assert untrusted.value.status == 403
+
+    directory = audio_rvc_models.models_dir()
+    assert list(directory.glob("*.pth")) == []
+    assert list(directory.glob("*.tmp")) == []
+
+
+def test_checkpoint_hash_is_rechecked_before_inference(account_audio):
+    record = _register("voice.pth", b"weights")
+    checkpoint = audio_rvc_models.models_dir() / f"{record['id']}.pth"
+    checkpoint.write_bytes(b"changed after registration")
+
+    with pytest.raises(audio_rvc_models.RVCModelError, match = "trusted or has changed"):
+        audio_rvc_models.resolve_paths(record["id"])
+
+
+def test_index_hash_is_rechecked_before_retrieval(account_audio):
+    record = _register("voice.pth", b"weights")
+    asyncio.run(
+        audio_rvc_models.register_index(
+            record["id"], _chunks(b"faiss"), filename = "voice.index"
+        )
+    )
+    index = audio_rvc_models.models_dir() / f"{record['id']}.index"
+    index.write_bytes(b"changed after registration")
+
+    with pytest.raises(audio_rvc_models.RVCModelError, match = "trusted or has changed"):
+        audio_rvc_models.resolve_paths(record["id"], retrieval_blend = 0.5)

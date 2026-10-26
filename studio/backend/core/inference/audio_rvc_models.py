@@ -24,7 +24,53 @@ from utils.upload_limits import RVC_CHECKPOINT_MAX_BYTES, RVC_INDEX_MAX_BYTES
 
 _ID_RE = re.compile(r"^[a-f0-9]{32}$")
 _CHECKPOINT_EXTENSIONS = frozenset((".pth", ".pt"))
+_SHA256_RE = re.compile(r"^[a-f0-9]{64}$")
+_TRUSTED_HASH_ENV = {
+    "checkpoint": "UNSLOTH_STUDIO_TRUSTED_RVC_CHECKPOINT_SHA256",
+    "index": "UNSLOTH_STUDIO_TRUSTED_RVC_INDEX_SHA256",
+}
 MAX_MODELS = 16
+
+
+def _trusted_hashes(kind: str) -> frozenset[str]:
+    variable = _TRUSTED_HASH_ENV.get(kind)
+    if variable is None:
+        return frozenset()
+    raw = os.environ.get(variable, "")
+    values = [value.strip().lower() for value in raw.split(",") if value.strip()]
+    if not values or any(not _SHA256_RE.fullmatch(value) for value in values):
+        return frozenset()
+    return frozenset(values)
+
+
+def _require_trusted_hashes(kind: str) -> frozenset[str]:
+    hashes = _trusted_hashes(kind)
+    if not hashes:
+        raise RVCModelError(
+            503,
+            f"Custom RVC {kind} uploads are disabled until the server "
+            "administrator configures trusted SHA-256 hashes.",
+        )
+    return hashes
+
+
+def _file_sha256(path: Path) -> Optional[str]:
+    digest = hashlib.sha256()
+    try:
+        with path.open("rb") as stream:
+            for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+                digest.update(chunk)
+    except OSError:
+        return None
+    return digest.hexdigest()
+
+
+def _matches_trust_allowlist(path: Path, digest: str, kind: str) -> bool:
+    return (
+        bool(_SHA256_RE.fullmatch(digest))
+        and digest in _trusted_hashes(kind)
+        and _file_sha256(path) == digest
+    )
 
 
 class RVCModelError(Exception):
@@ -76,6 +122,16 @@ def _read(model_id: str) -> Optional[dict[str, Any]]:
         return None
     if record.get("format") not in {ext[1:] for ext in _CHECKPOINT_EXTENSIONS}:
         return None
+    if not _SHA256_RE.fullmatch(str(record.get("sha256") or "")):
+        return None
+    for key in ("bytes", "index_bytes"):
+        value = record.get(key)
+        if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+            return None
+    if record.get("index_bytes") and not _SHA256_RE.fullmatch(
+        str(record.get("index_sha256") or "")
+    ):
+        return None
     return record
 
 
@@ -119,7 +175,11 @@ def _clean_label(value: Optional[str], fallback: str) -> str:
 
 
 async def _write_upload(
-    chunks: AsyncIterable[bytes], *, destination: Path, cap: int
+    chunks: AsyncIterable[bytes],
+    *,
+    destination: Path,
+    cap: int,
+    trusted_hashes: frozenset[str],
 ) -> tuple[int, str]:
     directory = models_dir()
     try:
@@ -142,6 +202,12 @@ async def _write_upload(
                     stream.write(chunk)
             if size == 0:
                 raise RVCModelError(400, "RVC model file is empty.")
+            file_digest = digest.hexdigest()
+            if file_digest not in trusted_hashes:
+                raise RVCModelError(
+                    403,
+                    "The uploaded RVC file is not on the server's trusted SHA-256 allowlist.",
+                )
             stream.flush()
             os.fsync(stream.fileno())
         os.replace(tmp, destination)
@@ -154,7 +220,7 @@ async def _write_upload(
     except BaseException:
         tmp.unlink(missing_ok = True)
         raise
-    return size, digest.hexdigest()
+    return size, file_digest
 
 
 def _record(meta: dict[str, Any]) -> dict[str, Any]:
@@ -178,9 +244,13 @@ async def register_checkpoint(
         raise RVCModelError(400, f"You have {MAX_MODELS} registered RVC models.")
     directory = models_dir()
     model_id = uuid.uuid4().hex
+    trusted_hashes = _require_trusted_hashes("checkpoint")
     destination = directory / f"{model_id}{suffix}"
     size, digest = await _write_upload(
-        chunks, destination = destination, cap = RVC_CHECKPOINT_MAX_BYTES
+        chunks,
+        destination = destination,
+        cap = RVC_CHECKPOINT_MAX_BYTES,
+        trusted_hashes = trusted_hashes,
     )
     now = datetime.now(timezone.utc).isoformat(timespec = "seconds").replace("+00:00", "Z")
     meta = {
@@ -208,6 +278,7 @@ async def register_index(
         raise RVCModelError(404, "RVC model not found.")
     _basename, suffix = _clean_filename(filename, frozenset((".index",)))
     del _basename, suffix
+    trusted_hashes = _require_trusted_hashes("index")
     directory = models_dir()
     destination = directory / f"{model_id}.index"
     try:
@@ -220,7 +291,10 @@ async def register_index(
         raise RVCModelError(500, "Could not reserve the RVC index slot.") from None
     try:
         size, digest = await _write_upload(
-            chunks, destination = destination, cap = RVC_INDEX_MAX_BYTES
+            chunks,
+            destination = destination,
+            cap = RVC_INDEX_MAX_BYTES,
+            trusted_hashes = trusted_hashes,
         )
         meta["index_bytes"] = size
         meta["index_sha256"] = digest
@@ -279,6 +353,8 @@ def resolve_paths(
     checkpoint = _owned_file(model_id, f"{model_id}.{meta['format']}")
     if checkpoint is None:
         raise RVCModelError(404, "RVC model file is unavailable.")
+    if not _matches_trust_allowlist(checkpoint, str(meta["sha256"]), "checkpoint"):
+        raise RVCModelError(403, "The RVC checkpoint is no longer trusted or has changed.")
     try:
         blend = float(retrieval_blend or 0.0)
     except (TypeError, ValueError):
@@ -288,4 +364,8 @@ def resolve_paths(
     index = _owned_file(model_id, f"{model_id}.index")
     if blend > 0 and index is None:
         raise RVCModelError(400, "Register an .index file or set retrieval_blend to 0.")
+    if blend > 0 and not _matches_trust_allowlist(
+        index, str(meta.get("index_sha256") or ""), "index"
+    ):
+        raise RVCModelError(403, "The RVC retrieval index is no longer trusted or has changed.")
     return checkpoint, index if blend > 0 else None

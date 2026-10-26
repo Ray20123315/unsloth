@@ -3,6 +3,8 @@
 
 from __future__ import annotations
 
+import hashlib
+
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -16,6 +18,14 @@ from utils.account_context import AccountContext, bind_account, reset_account
 
 
 def _client(monkeypatch, tmp_path, active):
+    monkeypatch.setenv(
+        "UNSLOTH_STUDIO_TRUSTED_RVC_CHECKPOINT_SHA256",
+        hashlib.sha256(b"checkpoint").hexdigest(),
+    )
+    monkeypatch.setenv(
+        "UNSLOTH_STUDIO_TRUSTED_RVC_INDEX_SHA256",
+        hashlib.sha256(b"index").hexdigest(),
+    )
     monkeypatch.setattr(
         audio_gallery,
         "gallery_dir",
@@ -86,6 +96,25 @@ def test_registration_rejects_unsupported_extensions_and_oversized_body(monkeypa
             content = b"four",
         )
         assert oversized.status_code == 413
+
+
+def test_upload_route_rejects_unapproved_checkpoint_digest(monkeypatch, tmp_path):
+    active = [AccountContext("alice", "alice")]
+    with _client(monkeypatch, tmp_path, active) as client:
+        monkeypatch.setenv(
+            "UNSLOTH_STUDIO_TRUSTED_RVC_CHECKPOINT_SHA256",
+            hashlib.sha256(b"trusted").hexdigest(),
+        )
+        response = client.post(
+            "/v1/audio/rvc-models",
+            params = {"filename": "voice.pth"},
+            content = b"untrusted",
+            headers = {"content-type": "application/octet-stream"},
+        )
+        assert response.status_code == 403
+        directory = tmp_path / "alice" / "audio" / "rvc_models"
+        assert list(directory.glob("*.pth")) == []
+        assert list(directory.glob("*.tmp")) == []
 
 
 def test_custom_model_id_schema_rejects_paths_and_target_refs():

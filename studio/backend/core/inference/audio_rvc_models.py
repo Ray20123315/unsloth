@@ -173,6 +173,7 @@ async def register_checkpoint(
     chunks: AsyncIterable[bytes], *, filename: str, name: Optional[str] = None
 ) -> dict[str, Any]:
     basename, suffix = _clean_filename(filename, _CHECKPOINT_EXTENSIONS)
+    display_name = _clean_label(name, basename)
     if len(list_models()) >= MAX_MODELS:
         raise RVCModelError(400, f"You have {MAX_MODELS} registered RVC models.")
     directory = models_dir()
@@ -184,7 +185,7 @@ async def register_checkpoint(
     now = datetime.now(timezone.utc).isoformat(timespec = "seconds").replace("+00:00", "Z")
     meta = {
         "id": model_id,
-        "name": _clean_label(name, basename),
+        "name": display_name,
         "format": suffix[1:],
         "bytes": size,
         "sha256": digest,

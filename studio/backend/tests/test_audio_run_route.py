@@ -1650,9 +1650,19 @@ def test_an_rvc_run_converts_an_upload_to_a_builtin_voice(stub, tmp_path):
     assert not kept.exists()
 
 
-def test_an_rvc_run_uses_a_registered_model_id_and_keeps_paths_private(stub, tmp_path):
+def test_an_rvc_run_uses_a_registered_model_id_and_keeps_paths_private(
+    stub, tmp_path, monkeypatch
+):
     backend = _use(stub, "rvc", "RVC-GGUF")
     input_id = _input(ALICE, seconds = 2.0)
+    prepared_limits = []
+    real_prepare = audio_inputs.prepared_path
+
+    def observe_prepare(*args, **kwargs):
+        prepared_limits.append(kwargs.get("max_seconds"))
+        return real_prepare(*args, **kwargs)
+
+    monkeypatch.setattr(audio_inputs, "prepared_path", observe_prepare)
     register = lambda: asyncio.run(
         audio_rvc_models.register_checkpoint(
             _chunks([b"checkpoint"]), filename = "dafeiyu.pth", name = "大肥魚"
@@ -1669,6 +1679,7 @@ def test_an_rvc_run_uses_a_registered_model_id_and_keeps_paths_private(stub, tmp
     (call,) = backend.calls
     assert call["convert"]["rvc_model_id"] == model["id"]
     assert call["convert"]["mode"] == "singing"
+    assert prepared_limits == [15 * 60]
     (clip,) = response.json()["clips"]
     meta = _meta(tmp_path, ALICE, clip["id"])
     assert meta["prompt"] == "me.webm → 大肥魚"

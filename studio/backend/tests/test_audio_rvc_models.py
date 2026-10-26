@@ -81,3 +81,10 @@ def test_stream_limit_removes_partial_upload(account_audio, monkeypatch):
     directory = audio_rvc_models.models_dir()
     assert list(directory.glob("*.pth")) == []
     assert list(directory.glob("*.tmp")) == []
+
+
+def test_invalid_display_name_does_not_leave_an_orphan_checkpoint(account_audio):
+    with pytest.raises(audio_rvc_models.RVCModelError, match = "name"):
+        _register("voice.pth", b"weights", name = "x" * 129)
+    directory = audio_rvc_models.models_dir()
+    assert list(directory.glob("*.pth")) == []

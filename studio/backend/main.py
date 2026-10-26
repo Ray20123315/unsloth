@@ -413,6 +413,7 @@ from routes import (
     external_import_router,
     inference_router,
     inference_studio_router,
+    audio_rvc_router,
     mcp_servers_router,
     openai_fine_tuning_router,
     skills_router,
@@ -1597,8 +1598,12 @@ _RAG_DOCUMENT_UPLOAD_RE = _re.compile(
 )
 # One file into a chat's sandbox folder (multipart, capped by the route), on both mounts of the router.
 _SANDBOX_UPLOAD_RE = _re.compile(r"^/(?:api/inference|v1)/sandbox/[^/]+/upload/?$")
+_RVC_MODEL_UPLOAD_RE = _re.compile(
+    r"^/(?:api/inference|v1)/audio/rvc-models(?:/[a-f0-9]{32}/index)?/?$"
+)
 _UPLOAD_PASSTHROUGH_RE = _re.compile(
-    f"(?:{_RAG_DOCUMENT_UPLOAD_RE.pattern})|(?:{_SANDBOX_UPLOAD_RE.pattern})"
+    f"(?:{_RAG_DOCUMENT_UPLOAD_RE.pattern})|(?:{_SANDBOX_UPLOAD_RE.pattern})|"
+    f"(?:{_RVC_MODEL_UPLOAD_RE.pattern})"
 )
 # Streamed to disk and capped by the route itself; buffering here would hold 200 MiB in memory.
 _AUDIO_INPUT_UPLOAD_PATHS = ("/api/inference/audio/inputs", "/v1/audio/inputs")
@@ -1634,6 +1639,11 @@ def _get_upload_passthrough_request_max_bytes(path: str) -> int:
         )
     if path.rstrip("/") == _LIBRARY_UPLOAD_PATH:
         return upload_request_limit_bytes(LIBRARY_UPLOAD_MAX_BYTES)
+    if _RVC_MODEL_UPLOAD_RE.match(path):
+        from utils.upload_limits import RVC_CHECKPOINT_MAX_BYTES, RVC_INDEX_MAX_BYTES
+        return (
+            RVC_INDEX_MAX_BYTES if path.rstrip("/").endswith("/index") else RVC_CHECKPOINT_MAX_BYTES
+        )
     if path.rstrip("/") in _AUDIO_INPUT_UPLOAD_PATHS:
         return AUDIO_INPUT_MAX_BYTES
     if _SANDBOX_UPLOAD_RE.match(path):
@@ -1969,6 +1979,7 @@ app.include_router(
 app.include_router(inference_router, prefix = "/api/inference", tags = ["inference"])
 # Unsloth-only inference endpoints (cancel, etc.) are not on the /v1 OpenAI-compat prefix.
 app.include_router(inference_studio_router, prefix = "/api/inference", tags = ["inference"])
+app.include_router(audio_rvc_router, prefix = "/api/inference", tags = ["inference"])
 
 # Unsloth-only text-to-video endpoints; not exposed on the /v1 OpenAI-compat prefix.
 app.include_router(video_router, prefix = "/api/inference", tags = ["inference"])
@@ -1976,6 +1987,7 @@ app.include_router(video_openai_router, prefix = "/api/inference", tags = ["infe
 app.include_router(video_openai_router, prefix = "/v1", tags = ["openai-compat"])
 
 app.include_router(inference_router, prefix = "/v1", tags = ["openai-compat"])
+app.include_router(audio_rvc_router, prefix = "/v1", tags = ["openai-compat"])
 app.include_router(openai_fine_tuning_router, prefix = "/v1", tags = ["openai-compat"])
 app.include_router(systemone_router, prefix = "/v1", tags = ["systemone"])
 # llama-server / Ollama discovery probes. Declares its own full paths (/props, /version, /api/tags, ...) so it

@@ -8,6 +8,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import base64
+import hashlib
 import io
 import json
 import queue
@@ -21,7 +22,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from auth.authentication import authenticated_via_api_key, get_current_subject
-from core.inference import audio_gallery, audio_inputs, audio_voices
+from core.inference import audio_gallery, audio_inputs, audio_rvc_models, audio_voices
 from routes import inference
 from utils.account_context import OWNER, bind_account, reset_account, run_as
 
@@ -1648,6 +1649,48 @@ def test_an_rvc_run_converts_an_upload_to_a_builtin_voice(stub, tmp_path):
         assert client.delete(f"/api/inference/audio/gallery/{clip['id']}").status_code == 200
         assert client.get(source_url).status_code == 404
     assert not kept.exists()
+
+
+def test_an_rvc_run_uses_a_registered_model_id_and_keeps_paths_private(stub, tmp_path, monkeypatch):
+    monkeypatch.setenv(
+        "UNSLOTH_STUDIO_TRUSTED_RVC_CHECKPOINT_SHA256",
+        hashlib.sha256(b"checkpoint").hexdigest(),
+    )
+    backend = _use(stub, "rvc", "RVC-GGUF")
+    input_id = _input(ALICE, seconds = 2.0)
+    prepared_limits = []
+    real_prepare = audio_inputs.prepared_path
+
+    def observe_prepare(*args, **kwargs):
+        prepared_limits.append(kwargs.get("max_seconds"))
+        return real_prepare(*args, **kwargs)
+
+    monkeypatch.setattr(audio_inputs, "prepared_path", observe_prepare)
+    register = lambda: asyncio.run(
+        audio_rvc_models.register_checkpoint(
+            _chunks([b"checkpoint"]), filename = "dafeiyu.pth", name = "大肥魚"
+        )
+    )
+    model = run_as(ALICE, register)
+    with _client(ALICE) as client:
+        response = _convert(
+            client,
+            inputs = {"source": {"input_id": input_id}},
+            convert = {"mode": "singing", "rvc_model_id": model["id"]},
+        )
+    assert response.status_code == 200, response.text
+    (call,) = backend.calls
+    assert call["convert"]["rvc_model_id"] == model["id"]
+    assert call["convert"]["mode"] == "singing"
+    assert prepared_limits == [15 * 60]
+    (clip,) = response.json()["clips"]
+    meta = _meta(tmp_path, ALICE, clip["id"])
+    assert meta["prompt"] == "me.webm → 大肥魚"
+    assert meta["reference_name"] == "大肥魚"
+    assert "target_builtin" not in meta
+    assert meta["settings"]["rvc_model_id"] == model["id"]
+    assert "rvc_models" not in json.dumps(meta)
+    assert "voice_model_path" not in json.dumps(meta)
 
 
 def test_a_seed_vc_run_takes_a_history_clip_and_a_saved_voice_at_its_rates(stub, tmp_path):

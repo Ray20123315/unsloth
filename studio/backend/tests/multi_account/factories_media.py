@@ -216,6 +216,39 @@ def seed_transcript(account) -> dict[str, str]:
     return {"transcript_id": record["id"]}
 
 
+@seeder("media-rvc")
+def seed_rvc_checkpoint(account) -> dict[str, str]:
+    import hashlib
+    import json
+
+    from core.inference import audio_rvc_models
+    from utils.account_context import run_as
+
+    model_id = "0123456789abcdef0123456789abcdef"
+    checkpoint = b"matrix-rvc-checkpoint"
+
+    def save() -> None:
+        directory = audio_rvc_models.models_dir()
+        (directory / f"{model_id}.pth").write_bytes(checkpoint)
+        (directory / f"{model_id}.json").write_text(
+            json.dumps(
+                {
+                    "id": model_id,
+                    "name": SENTINEL,
+                    "format": "pth",
+                    "bytes": len(checkpoint),
+                    "sha256": hashlib.sha256(checkpoint).hexdigest(),
+                    "index_bytes": 0,
+                    "created_at": "2026-01-01T00:00:00Z",
+                }
+            ),
+            encoding = "utf-8",
+        )
+
+    run_as(account, save)
+    return {"model_id": model_id}
+
+
 def _mp4_bytes() -> bytes:
     import io
 
@@ -349,6 +382,14 @@ _LINK_IS_THE_CREDENTIAL = (
 )
 
 FACTORIES = {
+    "routes.audio_rvc:GET:/audio/rvc-models/{model_id}": Factory("media-rvc", fragment = SENTINEL),
+    "routes.audio_rvc:POST:/audio/rvc-models/{model_id}/index": Factory(
+        "media-rvc",
+        right = (503,),
+        self_expected = (503,),
+        query = {"filename": "matrix.index"},
+        reason = "the owner reaches the trusted-index allowlist gate (503 when not configured); foreign checkpoints remain 404",
+    ),
     "routes.inference:GET:/images/gallery/{image_id}/file": Factory(
         "media-image", fragment = SENTINEL
     ),

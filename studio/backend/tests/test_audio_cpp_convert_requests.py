@@ -17,6 +17,7 @@ from core.inference import audio_cpp_convert as acc
 from core.inference import audio_cpp_files
 from core.inference import audio_cpp_models as acm
 from core.inference import audio_cpp_server as srv
+from core.inference import audio_rvc_models
 from core.inference.audio_cpp_models import (
     AUDIO_CPP_REPO,
     AudioCppModel,
@@ -194,6 +195,51 @@ def test_rvc_converts_to_a_builtin_voice_by_options_voice_id(started):
     }
     request = _convert(backend, inputs = {"source": SOURCE}, pitch = -5, pitch_auto = True)
     assert request["options"] == {"voice_id": "default", "semitone_shift": "-5", **_RVC_DEFAULTS}
+    assert started == []
+
+
+def test_client_cannot_inject_server_file_paths_into_rvc_options():
+    with pytest.raises(acc.ConvertRequestError, match = "registered model ID"):
+        acc.convert_request(
+            _model("rvc", _RVC_OPTIONS),
+            mode = "speech",
+            source = SOURCE,
+            target = None,
+            options = {"voice_model_path": "/etc/passwd"},
+        )
+
+
+def test_registered_rvc_model_paths_are_resolved_and_injected_by_the_backend(started, monkeypatch):
+    from pathlib import Path
+
+    backend = _backend(_model("rvc", _RVC_OPTIONS), started)
+    assert acc.convert_caps(backend._model)["custom_source_max_seconds"] == 15 * 60
+    model_id = "a" * 32
+    checkpoint = Path("/srv/accounts/a/audio/rvc_models") / f"{model_id}.pth"
+    index = Path("/srv/accounts/a/audio/rvc_models") / f"{model_id}.index"
+
+    def resolve_paths(selected_id, blend):
+        assert selected_id == model_id and blend == 0.6
+        return checkpoint, index
+
+    monkeypatch.setattr(audio_rvc_models, "resolve_paths", resolve_paths)
+    request = _convert(
+        backend,
+        inputs = {"source": SOURCE},
+        options = {"retrieval_blend": 0.6},
+        mode = "singing",
+        rvc_model_id = model_id,
+    )
+    assert request == {
+        "audio": SOURCE,
+        "options": {
+            "retrieval_blend": "0.6",
+            "rms_mix_rate": "0.25",
+            "unvoiced_protection": "0.33",
+            "voice_model_path": str(checkpoint),
+            "retrieval_index_path": str(index),
+        },
+    }
     assert started == []
 
 
@@ -381,7 +427,7 @@ def test_status_fields_describe_convert_per_family():
     rvc = acb.model_info_fields(_model("rvc", _RVC_OPTIONS))
     assert rvc["audio_workflows"] == ["convert"]
     assert rvc["audio_convert"] == {
-        "modes": ["speech"],
+        "modes": ["speech", "singing"],
         "target": "builtin",
         "builtin_voices": [
             {"id": "default", "label": "Default"},
@@ -389,12 +435,16 @@ def test_status_fields_describe_convert_per_family():
             {"id": "chocola", "label": "Chocola"},
             {"id": "fraise", "label": "Fraise"},
         ],
-        "pitch": {"speech": {"auto": False, "shift_with_auto": False}},
+        "pitch": {
+            "speech": {"auto": False, "shift_with_auto": False},
+            "singing": {"auto": False, "shift_with_auto": False},
+        },
         "style": False,
         "route_reloads": False,
         "source_max_seconds": 300,
+        "custom_source_max_seconds": 900,
     }
-    assert rvc["audio_workflow_tasks"] == {"convert": "vc"}
+    assert rvc["audio_workflow_tasks"] == {"convert": "vc", "convert:singing": "vc"}
     assert (rvc["audio_server_task"], rvc["audio_convert_route"]) == ("vc", None)
     assert [o["name"] for o in rvc["audio_options_by_workflow"]["convert"]] == [
         "retrieval_blend",

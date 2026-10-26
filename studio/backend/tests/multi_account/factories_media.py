@@ -387,7 +387,8 @@ FACTORIES = {
         "media-rvc",
         right = (400,),
         self_expected = (400,),
-        reason = "matrix sends an empty raw upload; an owned checkpoint reaches the body validation",
+        query = {"filename": "matrix.index"},
+        reason = "an owned checkpoint reaches the empty upload validation; other accounts see 404",
     ),
     "routes.inference:GET:/images/gallery/{image_id}/file": Factory(
         "media-image", fragment = SENTINEL

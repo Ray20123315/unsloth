@@ -209,9 +209,7 @@ def test_client_cannot_inject_server_file_paths_into_rvc_options():
         )
 
 
-def test_registered_rvc_model_paths_are_resolved_and_injected_by_the_backend(
-    started, monkeypatch
-):
+def test_registered_rvc_model_paths_are_resolved_and_injected_by_the_backend(started, monkeypatch):
     from pathlib import Path
 
     backend = _backend(_model("rvc", _RVC_OPTIONS), started)

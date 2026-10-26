@@ -175,11 +175,7 @@ def _clean_label(value: Optional[str], fallback: str) -> str:
 
 
 async def _write_upload(
-    chunks: AsyncIterable[bytes],
-    *,
-    destination: Path,
-    cap: int,
-    trusted_hashes: frozenset[str],
+    chunks: AsyncIterable[bytes], *, destination: Path, cap: int, trusted_hashes: frozenset[str]
 ) -> tuple[int, str]:
     directory = models_dir()
     try:
@@ -236,7 +232,10 @@ def _record(meta: dict[str, Any]) -> dict[str, Any]:
 
 
 async def register_checkpoint(
-    chunks: AsyncIterable[bytes], *, filename: str, name: Optional[str] = None
+    chunks: AsyncIterable[bytes],
+    *,
+    filename: str,
+    name: Optional[str] = None,
 ) -> dict[str, Any]:
     basename, suffix = _clean_filename(filename, _CHECKPOINT_EXTENSIONS)
     display_name = _clean_label(name, basename)
@@ -344,9 +343,7 @@ def _owned_file(model_id: str, filename: str) -> Optional[Path]:
     return path if path.is_file() and not path.is_symlink() else None
 
 
-def resolve_paths(
-    model_id: str, retrieval_blend: Any = 0.0
-) -> tuple[Path, Optional[Path]]:
+def resolve_paths(model_id: str, retrieval_blend: Any = 0.0) -> tuple[Path, Optional[Path]]:
     meta = _read(model_id)
     if meta is None:
         raise RVCModelError(404, "RVC model not found.")

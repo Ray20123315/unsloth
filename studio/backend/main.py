@@ -1642,9 +1642,7 @@ def _get_upload_passthrough_request_max_bytes(path: str) -> int:
     if _RVC_MODEL_UPLOAD_RE.match(path):
         from utils.upload_limits import RVC_CHECKPOINT_MAX_BYTES, RVC_INDEX_MAX_BYTES
         return (
-            RVC_INDEX_MAX_BYTES
-            if path.rstrip("/").endswith("/index")
-            else RVC_CHECKPOINT_MAX_BYTES
+            RVC_INDEX_MAX_BYTES if path.rstrip("/").endswith("/index") else RVC_CHECKPOINT_MAX_BYTES
         )
     if path.rstrip("/") in _AUDIO_INPUT_UPLOAD_PATHS:
         return AUDIO_INPUT_MAX_BYTES

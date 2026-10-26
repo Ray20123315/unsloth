@@ -71,9 +71,7 @@ async def upload_rvc_index(
 ):
     _limit_declared_size(request, audio_rvc_models.RVC_INDEX_MAX_BYTES)
     try:
-        return await audio_rvc_models.register_index(
-            model_id, request.stream(), filename = filename
-        )
+        return await audio_rvc_models.register_index(model_id, request.stream(), filename = filename)
     except audio_rvc_models.RVCModelError as exc:
         raise _registry_error(exc) from None
 

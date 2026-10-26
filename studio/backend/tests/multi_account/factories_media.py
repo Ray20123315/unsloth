@@ -382,9 +382,7 @@ _LINK_IS_THE_CREDENTIAL = (
 )
 
 FACTORIES = {
-    "routes.audio_rvc:GET:/audio/rvc-models/{model_id}": Factory(
-        "media-rvc", fragment = SENTINEL
-    ),
+    "routes.audio_rvc:GET:/audio/rvc-models/{model_id}": Factory("media-rvc", fragment = SENTINEL),
     "routes.audio_rvc:POST:/audio/rvc-models/{model_id}/index": Factory(
         "media-rvc",
         right = (400,),

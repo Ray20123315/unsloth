@@ -1651,9 +1651,7 @@ def test_an_rvc_run_converts_an_upload_to_a_builtin_voice(stub, tmp_path):
     assert not kept.exists()
 
 
-def test_an_rvc_run_uses_a_registered_model_id_and_keeps_paths_private(
-    stub, tmp_path, monkeypatch
-):
+def test_an_rvc_run_uses_a_registered_model_id_and_keeps_paths_private(stub, tmp_path, monkeypatch):
     monkeypatch.setenv(
         "UNSLOTH_STUDIO_TRUSTED_RVC_CHECKPOINT_SHA256",
         hashlib.sha256(b"checkpoint").hexdigest(),

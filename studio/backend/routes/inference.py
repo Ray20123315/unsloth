@@ -25752,9 +25752,7 @@ async def _run_audio_convert(
             )
         except audio_rvc_models.RVCModelError as exc:
             raise HTTPException(status_code = exc.status, detail = exc.detail) from None
-        registered_rvc = await asyncio.to_thread(
-            audio_rvc_models.get, params["rvc_model_id"]
-        )
+        registered_rvc = await asyncio.to_thread(audio_rvc_models.get, params["rvc_model_id"])
         if registered_rvc is None:
             raise HTTPException(status_code = 404, detail = "RVC model not found.")
     refs = {"source": body.inputs.source, "target": body.inputs.target}

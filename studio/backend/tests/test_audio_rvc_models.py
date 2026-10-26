@@ -35,11 +35,13 @@ def account_audio(tmp_path, monkeypatch):
     return active
 
 
-def _register(filename: str, *parts: bytes, name: str | None = None):
+def _register(
+    filename: str,
+    *parts: bytes,
+    name: str | None = None,
+):
     return asyncio.run(
-        audio_rvc_models.register_checkpoint(
-            _chunks(*parts), filename = filename, name = name
-        )
+        audio_rvc_models.register_checkpoint(_chunks(*parts), filename = filename, name = name)
     )
 
 
@@ -49,7 +51,13 @@ def test_checkpoint_and_index_are_account_scoped_and_paths_stay_private(account_
     assert record["format"] == "pth"
     assert record["bytes"] == len(b"weights")
     assert set(record) == {
-        "id", "name", "format", "bytes", "has_index", "index_bytes", "created_at"
+        "id",
+        "name",
+        "format",
+        "bytes",
+        "has_index",
+        "index_bytes",
+        "created_at",
     }
     assert str(audio_rvc_models.models_dir()) not in str(record)
 
@@ -60,9 +68,7 @@ def test_checkpoint_and_index_are_account_scoped_and_paths_stay_private(account_
         audio_rvc_models.resolve_paths(record["id"], retrieval_blend = 0.5)
 
     indexed = asyncio.run(
-        audio_rvc_models.register_index(
-            record["id"], _chunks(b"faiss"), filename = "dafeiyu.index"
-        )
+        audio_rvc_models.register_index(record["id"], _chunks(b"faiss"), filename = "dafeiyu.index")
     )
     assert indexed["has_index"] is True
     assert indexed["index_bytes"] == len(b"faiss")
@@ -99,9 +105,7 @@ def test_invalid_display_name_does_not_leave_an_orphan_checkpoint(account_audio)
     assert list(directory.glob("*.pth")) == []
 
 
-def test_checkpoint_requires_server_trust_and_rejects_unapproved_hash(
-    account_audio, monkeypatch
-):
+def test_checkpoint_requires_server_trust_and_rejects_unapproved_hash(account_audio, monkeypatch):
     monkeypatch.delenv("UNSLOTH_STUDIO_TRUSTED_RVC_CHECKPOINT_SHA256")
     with pytest.raises(audio_rvc_models.RVCModelError) as disabled:
         _register("voice.pth", b"weights")
@@ -132,9 +136,7 @@ def test_checkpoint_hash_is_rechecked_before_inference(account_audio):
 def test_index_hash_is_rechecked_before_retrieval(account_audio):
     record = _register("voice.pth", b"weights")
     asyncio.run(
-        audio_rvc_models.register_index(
-            record["id"], _chunks(b"faiss"), filename = "voice.index"
-        )
+        audio_rvc_models.register_index(record["id"], _chunks(b"faiss"), filename = "voice.index")
     )
     index = audio_rvc_models.models_dir() / f"{record['id']}.index"
     index.write_bytes(b"changed after registration")

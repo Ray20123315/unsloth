@@ -79,7 +79,6 @@ def test_registration_endpoints_use_opaque_ids_and_enforce_account_scope(monkeyp
 
 def test_registration_rejects_unsupported_extensions_and_oversized_body(monkeypatch, tmp_path):
     from core.inference import audio_rvc_models
-
     active = [AccountContext("alice", "alice")]
     with _client(monkeypatch, tmp_path, active) as client:
         rejected = client.post(

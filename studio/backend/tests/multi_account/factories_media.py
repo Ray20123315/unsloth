@@ -385,10 +385,10 @@ FACTORIES = {
     "routes.audio_rvc:GET:/audio/rvc-models/{model_id}": Factory("media-rvc", fragment = SENTINEL),
     "routes.audio_rvc:POST:/audio/rvc-models/{model_id}/index": Factory(
         "media-rvc",
-        right = (400,),
-        self_expected = (400,),
+        right = (503,),
+        self_expected = (503,),
         query = {"filename": "matrix.index"},
-        reason = "an owned checkpoint reaches the empty upload validation; other accounts see 404",
+        reason = "the owner reaches the trusted-index allowlist gate (503 when not configured); foreign checkpoints remain 404",
     ),
     "routes.inference:GET:/images/gallery/{image_id}/file": Factory(
         "media-image", fragment = SENTINEL

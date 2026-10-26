@@ -429,7 +429,7 @@ def test_status_fields_describe_convert_per_family():
     rvc = acb.model_info_fields(_model("rvc", _RVC_OPTIONS))
     assert rvc["audio_workflows"] == ["convert"]
     assert rvc["audio_convert"] == {
-        "modes": ["speech"],
+        "modes": ["speech", "singing"],
         "target": "builtin",
         "builtin_voices": [
             {"id": "default", "label": "Default"},
@@ -437,12 +437,16 @@ def test_status_fields_describe_convert_per_family():
             {"id": "chocola", "label": "Chocola"},
             {"id": "fraise", "label": "Fraise"},
         ],
-        "pitch": {"speech": {"auto": False, "shift_with_auto": False}},
+        "pitch": {
+            "speech": {"auto": False, "shift_with_auto": False},
+            "singing": {"auto": False, "shift_with_auto": False},
+        },
         "style": False,
         "route_reloads": False,
         "source_max_seconds": 300,
+        "custom_source_max_seconds": 900,
     }
-    assert rvc["audio_workflow_tasks"] == {"convert": "vc"}
+    assert rvc["audio_workflow_tasks"] == {"convert": "vc", "convert:singing": "vc"}
     assert (rvc["audio_server_task"], rvc["audio_convert_route"]) == ("vc", None)
     assert [o["name"] for o in rvc["audio_options_by_workflow"]["convert"]] == [
         "retrieval_blend",

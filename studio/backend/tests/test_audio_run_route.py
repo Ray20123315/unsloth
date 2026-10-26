@@ -1689,7 +1689,7 @@ def test_an_rvc_run_uses_a_registered_model_id_and_keeps_paths_private(
     meta = _meta(tmp_path, ALICE, clip["id"])
     assert meta["prompt"] == "me.webm → 大肥魚"
     assert meta["reference_name"] == "大肥魚"
-    assert meta["target_builtin"] is None
+    assert "target_builtin" not in meta
     assert meta["settings"]["rvc_model_id"] == model["id"]
     assert "rvc_models" not in json.dumps(meta)
     assert "voice_model_path" not in json.dumps(meta)

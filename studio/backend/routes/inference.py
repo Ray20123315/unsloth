@@ -25728,6 +25728,7 @@ async def _run_audio_convert(
     from core.inference.audio_cpp_convert import (
         CONVERT_SOURCE_MAX_SECONDS,
         CONVERT_TARGET_MAX_SECONDS,
+        RVC_CONVERT_SOURCE_MAX_SECONDS,
     )
 
     if any(
@@ -25739,6 +25740,23 @@ async def _run_audio_convert(
             detail = "A music mode, lyrics, variations and edits apply to Music only.",
         )
     params = body.convert.model_dump()
+    registered_rvc = None
+    if params.get("rvc_model_id"):
+        from core.inference import audio_rvc_models
+
+        try:
+            await asyncio.to_thread(
+                audio_rvc_models.resolve_paths,
+                params["rvc_model_id"],
+                (body.options or {}).get("retrieval_blend", 0.0),
+            )
+        except audio_rvc_models.RVCModelError as exc:
+            raise HTTPException(status_code = exc.status, detail = exc.detail) from None
+        registered_rvc = await asyncio.to_thread(
+            audio_rvc_models.get, params["rvc_model_id"]
+        )
+        if registered_rvc is None:
+            raise HTTPException(status_code = 404, detail = "RVC model not found.")
     refs = {"source": body.inputs.source, "target": body.inputs.target}
     if refs["source"] is None:
         raise HTTPException(status_code = 400, detail = "Add the recording to convert.")
@@ -25754,7 +25772,12 @@ async def _run_audio_convert(
             # Names the side so the page marks only the card that expired.
             raise _audio_source_error(_convert_role_error(exc, role)) from None
     source, target = resolved["source"], resolved.get("target")
-    max_seconds = {"source": CONVERT_SOURCE_MAX_SECONDS, "target": CONVERT_TARGET_MAX_SECONDS}
+    max_seconds = {
+        "source": (
+            RVC_CONVERT_SOURCE_MAX_SECONDS if registered_rvc else CONVERT_SOURCE_MAX_SECONDS
+        ),
+        "target": CONVERT_TARGET_MAX_SECONDS,
+    }
     seen: dict[str, Any] = {}
 
     def _prepare(model_info: dict) -> dict[str, str]:
@@ -25798,7 +25821,9 @@ async def _run_audio_convert(
         stats_holder = stats,
     )
     builtin = None
-    if target is not None:
+    if registered_rvc:
+        target_name = registered_rvc["name"]
+    elif target is not None:
         target_name = target.name
     else:
         voices = ((seen.get("model_info") or {}).get("audio_convert") or {}).get("builtin_voices")
@@ -25815,6 +25840,8 @@ async def _run_audio_convert(
             "options": _audio_run_settings(body, False)["options"],
         },
     }
+    if registered_rvc:
+        extra_meta["settings"]["rvc_model_id"] = registered_rvc["id"]
     if source.kind == "clip":
         extra_meta["source_clip_id"] = source.id
     elif source.kind == "input":

@@ -662,13 +662,14 @@ _CONVERT_FAMILIES: tuple[AudioCppFamily, ...] = (
         server_task = "vc",
         speaks = False,
         convert = ConvertSpec(
+            modes = (("speech", "vc"), ("singing", "vc")),
             builtin_voices = (
                 ("default", "Default"),
                 ("manthos", "Manthos"),
                 ("chocola", "Chocola"),
                 ("fraise", "Fraise"),
             ),
-            pitch = (("speech", False),),
+            pitch = (("speech", False), ("singing", False)),
             seed = False,
             source_rate = 16000,
             target_rate = None,

@@ -6566,6 +6566,20 @@ class AudioConvertParams(BaseModel):
     pitch_auto: bool = False
     style: Literal["source", "target"] = "source"
     voice: Optional[Literal["default", "manthos", "chocola", "fraise"]] = None
+    rvc_model_id: Optional[str] = Field(
+        None,
+        min_length = 32,
+        max_length = 32,
+        pattern = r"^[a-f0-9]{32}$",
+        description = "Opaque ID of an RVC checkpoint registered through /audio/rvc-models.",
+    )
+
+    @model_serializer(mode = "wrap")
+    def _omit_unset_rvc_model_id(self, handler):
+        data = handler(self)
+        if self.rvc_model_id is None:
+            data.pop("rvc_model_id", None)
+        return data
 
 
 class AudioRunEdit(BaseModel):
@@ -6673,6 +6687,12 @@ class AudioRunRequest(BaseModel):
                 raise ValueError("A conversion takes inputs.source and inputs.target.")
             if self.convert is None:
                 self.convert = AudioConvertParams()
+            if self.convert.rvc_model_id and (
+                inputs.target is not None
+                or self.convert.voice is not None
+                or "voice_id" in (self.options or {})
+            ):
+                raise ValueError("A registered RVC model replaces the target voice.")
             return self
         if self.text is None and self.workflow != "separate":
             raise ValueError("text is required.")
@@ -6763,6 +6783,20 @@ class AudioRunResponse(BaseModel):
             if line not in self.warnings:
                 self.warnings.append(line)
         return self
+
+
+class AudioRVCModelRecord(BaseModel):
+    id: str = Field(..., pattern = r"^[a-f0-9]{32}$")
+    name: str = Field(..., min_length = 1, max_length = 128)
+    format: Literal["pth", "pt"]
+    bytes: int = Field(..., ge = 1)
+    has_index: bool = False
+    index_bytes: int = Field(0, ge = 0)
+    created_at: str
+
+
+class AudioRVCModelListResponse(BaseModel):
+    models: List[AudioRVCModelRecord] = Field(default_factory = list)
 
 
 class AudioInputRecord(BaseModel):

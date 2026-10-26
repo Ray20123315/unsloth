@@ -788,6 +788,21 @@ class AudioCppBackend:
                     mode,
                     filled_options(model, "convert", audio_options),
                 )
+                voice_model_path = None
+                retrieval_index_path = None
+                rvc_model_id = convert.get("rvc_model_id")
+                if rvc_model_id:
+                    if model.family != "rvc":
+                        raise audio_cpp_convert.ConvertRequestError(
+                            "Registered RVC models can only be used with the RVC conversion model."
+                        )
+                    from core.inference import audio_rvc_models
+                    try:
+                        voice_model_path, retrieval_index_path = audio_rvc_models.resolve_paths(
+                            str(rvc_model_id), options.get("retrieval_blend", 0.0)
+                        )
+                    except audio_rvc_models.RVCModelError as exc:
+                        raise audio_cpp_convert.ConvertRequestError(exc.detail) from exc
                 request = audio_cpp_convert.convert_request(
                     model,
                     mode = mode,
@@ -800,6 +815,10 @@ class AudioCppBackend:
                     source_text = convert.get("source_text"),
                     options = {name: _option_string(value) for name, value in options.items()},
                     seed = seed,
+                    voice_model_path = str(voice_model_path) if voice_model_path else None,
+                    retrieval_index_path = (
+                        str(retrieval_index_path) if retrieval_index_path else None
+                    ),
                 )
             except audio_cpp_convert.ConvertRequestError as exc:
                 raise RuntimeError(str(exc)) from exc

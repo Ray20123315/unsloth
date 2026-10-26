@@ -11,6 +11,7 @@ from typing import Any, Optional
 from core.inference.audio_cpp_models import AudioCppModel
 
 CONVERT_SOURCE_MAX_SECONDS = 300
+RVC_CONVERT_SOURCE_MAX_SECONDS = 15 * 60
 CONVERT_TARGET_MAX_SECONDS = 30
 
 CONVERT_MODES = ("speech", "singing")
@@ -38,6 +39,11 @@ def convert_caps(model: AudioCppModel) -> Optional[dict[str, Any]]:
         "style": convert.style,
         "route_reloads": bool(convert.routes),
         "source_max_seconds": CONVERT_SOURCE_MAX_SECONDS,
+        **(
+            {"custom_source_max_seconds": RVC_CONVERT_SOURCE_MAX_SECONDS}
+            if model.family == "rvc"
+            else {}
+        ),
     }
 
 
@@ -98,6 +104,8 @@ def convert_request(
     source_text: Optional[str] = None,
     options: Optional[dict[str, str]] = None,
     seed: Optional[int] = None,
+    voice_model_path: Optional[str] = None,
+    retrieval_index_path: Optional[str] = None,
 ) -> dict[str, Any]:
     convert = model.convert
     if convert is None:
@@ -131,9 +139,18 @@ def convert_request(
         request["style_ref"] = str(target)
 
     request_options = dict(options or {})
+    if "voice_model_path" in request_options or "retrieval_index_path" in request_options:
+        raise ConvertRequestError("RVC model files must be selected by a registered model ID.")
+    if retrieval_index_path and not voice_model_path:
+        raise ConvertRequestError("An RVC retrieval index requires a registered RVC model.")
     if builtin:
         ids = [vid for vid, _label in convert.builtin_voices]
         request_options["voice_id"] = voice if voice in ids else ids[0]
+    if voice_model_path:
+        request_options.pop("voice_id", None)
+        request_options["voice_model_path"] = str(voice_model_path)
+        if retrieval_index_path:
+            request_options["retrieval_index_path"] = str(retrieval_index_path)
     pitch_modes = dict(convert.pitch)
     if mode in pitch_modes and not take_style:
         auto = pitch_auto and pitch_modes[mode]

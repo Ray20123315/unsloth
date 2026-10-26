@@ -499,7 +499,7 @@ _CLONE_TABLE = {
 
 
 _CONVERT_TABLE = {
-    "rvc": ("vc", {"speech": "vc"}, "builtin", 16000),
+    "rvc": ("vc", {"speech": "vc", "singing": "vc"}, "builtin", 16000),
     "seed_vc": ("vc", {"speech": "vc", "singing": "svc"}, "audio", 44100),
     "meanvc2": ("vc", {"speech": "vc"}, "audio", 16000),
     "chatterbox": ("clon", {"speech": "vc"}, "audio", 16000),
